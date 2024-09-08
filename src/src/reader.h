@@ -33,9 +33,6 @@ struct EEPROMString {
     int size = 0;
 };
 
-template <size_t Len>
-struct EEPROMLenString : public EEPROMFields<char, Len> {};
-
 // Shortcut for EEPROMString
 using EStr = EEPROMString;
 
@@ -46,6 +43,10 @@ using EF = EEPROMField<Field>;
 // Shortcut for EEPROMFields
 template <typename Field, size_t N>
 using EFs = EEPROMFields<Field, N>;
+
+// Shortcut for EEPROMFieldsArray (2D array N x Len of data)
+template <typename T, size_t N, size_t Len>
+using EFArr = EEPROMFieldsArray<T, N, Len>;
 
 /**
  * @brief Put a field to EEPROM
@@ -75,6 +76,12 @@ bool checkAddressOutOfBounds(Tuple& tuple, size_t& address){
     return address + std::get<Index>(tuple).size >= EEPROM.length();
 }
 
+// Check if the index is out of bounds
+template <typename Tuple, size_t Index>
+constexpr bool checkIndexOutOfBounds(){
+    return Index >= std::tuple_size<Tuple>::value;
+}
+
 /**
  * @brief Puts a tuple of data to EEPROM
  * @tparam Tuple The tuple to be stored in EEPROM, each element of the tuple must have a `data` field
@@ -82,7 +89,7 @@ bool checkAddressOutOfBounds(Tuple& tuple, size_t& address){
 template <typename Tuple, size_t Index = 0>
 bool putTupleToEEPROM(Tuple& tuple, size_t& address = 0){
     // If the index is less than the size of the tuple, put the data to EEPROM
-    if constexpr (Index < std::tuple_size<Tuple>::value){
+    if constexpr (!checkIndexOutOfBounds<Tuple, Index>()){
         // If the address is out of bounds, return
         if (checkAddressOutOfBounds<Tuple, Index>(tuple, address)){
             return false;
@@ -120,7 +127,7 @@ inline void readFromEEPROM<EEPROMString>(EEPROMString& field, size_t& address){
 template <typename Tuple, size_t Index = 0>
 bool readTupleFromEEPROM(Tuple& tuple, size_t& address = 0){
     // If the index is less than the size of the tuple, put the data to EEPROM
-    if constexpr (Index < std::tuple_size<Tuple>::value){
+    if constexpr (!checkIndexOutOfBounds<Tuple, Index>()){
         // If the address is out of bounds, return
         if (checkAddressOutOfBounds<Tuple, Index>(tuple, address)){
             return false;
@@ -182,20 +189,43 @@ class EEPROMReader
 {
     std::tuple<Fields...> fields;
 public:
+    static int instance_count;
+
     // Constructor, initializes the EEPROM memory, calls EEPROM.begin(size)
-    EEPROMReader() {
+    EEPROMReader() 
+    {
+        if (instance_count > 0)
+        {
+            const char* msg = "Only one instance of EEPROMReader is allowed at a time";
+            Serial.println(msg);
+            throw std::runtime_error(msg);
+        }
+
         EEPROM.begin(size);
+        instance_count++;
     }
 
-    ~EEPROMReader(){
+    EEPROMReader(EEPROMReader&& other)
+    {
+        fields = std::move(other.fields);
+        instance_count++;
+    }
+
+    EEPROMReader(const EEPROMReader&) = delete;
+    EEPROMReader& operator=(const EEPROMReader&) = delete;
+
+    ~EEPROMReader()
+    {
         EEPROM.end();
+        instance_count--;
     }
 
     /**
      * @brief Loads the data from EEPROM, with a given start address
      * @return True if all data was read successfully, false otherwise (the data was loaded up to some point)
      */
-    inline bool load(size_t startAddress = 0) noexcept {
+    inline bool load(size_t startAddress = 0) noexcept
+    {
         return readTupleFromEEPROM(fields, startAddress);
     }
 
@@ -203,7 +233,8 @@ public:
      * @brief Commits the data to EEPROM, with a given start address
      * @return True if all data was saved successfully, false otherwise
      */
-    inline bool save(size_t startAddress = 0) noexcept {
+    inline bool save(size_t startAddress = 0) noexcept
+    {
         return putTupleToEEPROM(fields, startAddress) && EEPROM.commit();
     }
 
@@ -214,8 +245,8 @@ public:
     
     */
     template <size_t index>
-    inline auto get_field() 
-    -> decltype(std::get<index>(fields)) 
+    inline auto get_field()
+    -> decltype(std::get<index>(fields))
     {
         static_assert(std::tuple_size<decltype(fields)>::value > index, "get_field(): Index out of bounds");
         return std::get<index>(fields);
@@ -263,7 +294,7 @@ public:
     ```
      */
     template <size_t index>
-    inline auto get_data() 
+    inline auto get_data()
     -> decltype(std::forward<decltype(std::get<index>(fields).data)>(std::get<index>(fields).data))
     {
         return std::forward<decltype(std::get<index>(fields).data)>(std::get<index>(fields).data);
@@ -322,7 +353,8 @@ public:
     { 
         static_assert(std::tuple_size<decltype(fields)>::value > index, "get(value_index = 0): Index out of bounds");
         auto& field = std::get<index>(fields);
-        if (value_index >= field.size){
+        if (value_index >= field.size)
+        {
             throw std::out_of_range(
                 "get(value_index): `value_index` out of bounds: " 
                 + std::to_string(value_index) + " >= " 
@@ -332,3 +364,6 @@ public:
         return field.data[value_index];
     }
 };
+
+template <size_t size, typename... Fields>
+int EEPROMReader<size, Fields...>::instance_count = 0;

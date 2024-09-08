@@ -24,33 +24,49 @@ The EEPROMReader library is designed to simplify reading and writing to EEPROM o
 ```cpp
 #include <EEPROMReader.h>
 
-// Create a reader with 512 bytes of EEPROM memory,
-// with an integer field, a string field, and an array of 20 chars
-EEPROMReader<512, EF<int>, EFs<char, 20>, EStr> reader;
-
 void write(){
-    reader.get<0>() = 123; // Set the integer field to 123
+    // Create a reader with 128 bytes of EEPROM memory,
+    // with an integer field, a string field, and an array of 20 chars
+    EEPROMReader<128, EF<int>, EFs<char, 20>, EStr> writer;
+    writer.get<0>() = 123; // Set the integer field to 123
     
     // This is an char array, so we need to use strcpy to set the value
-    strcpy(reader.get_data<1>(), "Hello, CWorld!");
+    strcpy(writer.get_data<1>(), "Hello, CWorld!");
 
-    // This is a string, so we can set the value directly
-    reader.get<2>() = "Hello, World!";
+    // This is a string, so we can set the value directly, 
+    // note that `get_data` is needed for this to work.
+    writer.get_data<2>() = "Hello, EEPROM!";
 
     // Save the data to EEPROM
-    reader.save();
+    writer.save();
 }
 
 void load(){
+    // Create a reader with the same fields as the `writer`
+    EEPROMReader<128, EF<int>, EFs<char, 20>, EStr> reader;
     reader.load(); // Load the data from EEPROM
 
     // Get the values from the reader
     Serial.println(reader.get<0>()); // Should print 123
     Serial.println(reader.get_data<1>()); // Should print "Hello, CWorld!"
-    Serial.println(reader.get<2>()); // Should print "Hello, World!"
+    Serial.println(reader.get_data<2>()); // Should print "Hello, EEPROM!"
+}
+
+void setup(){
+    Serial.begin(9600);
+    write();
+    load();
+}
+
+void loop(){
+    // Do nothing
 }
 
 ```
+
+## Limitations
+
+- **Board compatibility**: Right now it works only with ESP32 and ESP8266 boards (ESP32 tested). Possibly I may add support for AVR boards in the future.
 
 ## License
 
