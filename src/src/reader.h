@@ -1,9 +1,65 @@
 #pragma once
 
-#include <type_traits>
-#include <tuple>
-#include <EEPROM.h>
+#include "settings.h"
+#include "eeprom.h"
 
+#if USE_STD_LIBS
+#   include <type_traits>
+#   include <tuple>
+
+template <typename... Types>
+using tuple_t = std::tuple<Types...>;
+
+/**
+ * @brief Get the item from the tuple
+ * @tparam Tuple The tuple 
+ * @tparam Index The index of the tuple
+ */
+template <size_t Index, typename Tuple>
+constexpr auto getTupleItem(Tuple& tuple) 
+-> decltype(std::get<Index>(tuple)) 
+{
+    return std::get<Index>(tuple);
+}
+
+// Check if the index is out of bounds
+template <typename Tuple, size_t Index>
+constexpr bool checkIndexOutOfBounds(){
+    return Index >= std::tuple_size<Tuple>::value;
+}
+
+template <typename T>
+constexpr auto forward(T& t) 
+-> decltype(std::forward<T>(t))
+{
+    return std::forward<T>(t);
+}
+
+#else
+
+#   include "tuple.h"
+
+template <typename... Types>
+using tuple_t = Tuple<Types...>;
+
+template <size_t Index, typename Tuple>
+constexpr auto getTupleItem(Tuple& tuple)
+-> decltype(get_tuple_item<Index>(tuple))
+{
+    return get_tuple_item<Index>(tuple);
+}
+
+template <typename Tuple, size_t Index>
+constexpr bool checkIndexOutOfBounds(){
+    return Index >= Tuple::size();
+}
+
+template <typename T>
+constexpr T&& forward(T& t) noexcept {
+    return static_cast<T&&>(t);
+}
+
+#endif
 
 // EEROMFields stores an array of data in given type (or a single string)
 template <typename T, size_t N>
@@ -48,43 +104,38 @@ using EFs = EEPROMFields<Field, N>;
 template <typename T, size_t N, size_t Len>
 using EFArr = EEPROMFieldsArray<T, N, Len>;
 
+
+/**
+ * @brief Check if the address is out of bounds
+ * @tparam Tuple The tuple 
+ * @tparam Index The index of the tuple
+ */
+template <typename Tuple, size_t Index>
+bool checkAddressOutOfBounds(Tuple& tuple, size_t& address){
+    return address + getTupleItem<Index>(tuple).size >= EEPROM_CLASS.length();
+}
+
 /**
  * @brief Put a field to EEPROM
  * @tparam Field The field must have a `data` field
  */
 template <typename Field>
 inline void putToEEPROM(Field& field, size_t& address){
-    EEPROM.put(address, field.data);
+    EEPROM_CLASS.put(address, field.data);
     address += sizeof(field.data);
 }
 
 // Specialization for strings
 template <>
 inline void putToEEPROM<EEPROMString>(EEPROMString& field, size_t& address){
-    field.size = EEPROM.writeString(address, field.data.c_str());
+    field.size = EEPROM_CLASS.writeString(address, field.data.c_str());
     address += field.size + 1;
 }
 
-
 /**
- * @brief Check if the address is out of bounds
- * @tparam Tuple The tuple to be stored in EEPROM, each element of the tuple must have a `data` field
- * @tparam Index The index of the tuple
- */
-template <typename Tuple, size_t Index>
-bool checkAddressOutOfBounds(Tuple& tuple, size_t& address){
-    return address + std::get<Index>(tuple).size >= EEPROM.length();
-}
-
-// Check if the index is out of bounds
-template <typename Tuple, size_t Index>
-constexpr bool checkIndexOutOfBounds(){
-    return Index >= std::tuple_size<Tuple>::value;
-}
-
-/**
- * @brief Puts a tuple of data to EEPROM
- * @tparam Tuple The tuple to be stored in EEPROM, each element of the tuple must have a `data` field
+ * @brief Puts a tuple of data to EEPROM, up to the size of the tuple or until the address is out of bounds
+ * @tparam Tuple The tuple 
+ * @return True if all data was saved successfully, false otherwise
  */
 template <typename Tuple, size_t Index = 0>
 bool putTupleToEEPROM(Tuple& tuple, size_t& address = 0){
@@ -94,7 +145,7 @@ bool putTupleToEEPROM(Tuple& tuple, size_t& address = 0){
         if (checkAddressOutOfBounds<Tuple, Index>(tuple, address)){
             return false;
         }
-        putToEEPROM(std::get<Index>(tuple), address);
+        putToEEPROM(getTupleItem<Index>(tuple), address);
         return putTupleToEEPROM<Tuple, Index + 1>(tuple, address); // Recursively call itself
     }
     return true;
@@ -106,14 +157,14 @@ bool putTupleToEEPROM(Tuple& tuple, size_t& address = 0){
  */
 template <typename Field>
 inline void readFromEEPROM(Field& field, size_t& address){
-    EEPROM.get(address, field.data);
+    EEPROM_CLASS.get(address, field.data);
     address += sizeof(field.data);
 }
 
 // Specialization for strings
 template <>
 inline void readFromEEPROM<EEPROMString>(EEPROMString& field, size_t& address){
-    field.data = EEPROM.readString(address);
+    field.data = EEPROM_CLASS.readString(address);
     field.size = field.data.length();
     address += field.size + 1;
 }
@@ -132,14 +183,14 @@ bool readTupleFromEEPROM(Tuple& tuple, size_t& address = 0){
         if (checkAddressOutOfBounds<Tuple, Index>(tuple, address)){
             return false;
         }
-        readFromEEPROM(std::get<Index>(tuple), address);
+        readFromEEPROM(getTupleItem<Index>(tuple), address);
         return readTupleFromEEPROM<Tuple, Index + 1>(tuple, address); // Recursively call itself
     }
     return true;
 }
 
 /**
- * @brief Provides memory storage for EEPROM, works similar to std::tuple
+ * @brief Provides memory storage for EEPROM, works similar to std::tuple, only 1 instance is allowed at a time
  * @tparam size The size of the EEPROM memory to be used
  * @tparam Fields The fields to be stored in EEPROM, should be of type EEPROMField, EEPROMString, or EEPROMFields
  * 
@@ -178,7 +229,7 @@ bool readTupleFromEEPROM(Tuple& tuple, size_t& address = 0){
  * 
  * Serial.println(reader.get<0>());
  * 
- * Serial.println(reader.get<1>());
+ * Serial.println(reader.get_data<1>());
  * 
  * Serial.println(reader.get<2>(1));
  * 
@@ -187,36 +238,38 @@ bool readTupleFromEEPROM(Tuple& tuple, size_t& address = 0){
 template <size_t size, typename... Fields>
 class EEPROMReader 
 {
-    std::tuple<Fields...> fields;
+    tuple_t<Fields...> fields;
 public:
     static int instance_count;
 
-    // Constructor, initializes the EEPROM memory, calls EEPROM.begin(size)
+    // Constructor, initializes the EEPROM memory, calls EEPROM_CLASS.begin(size)
     EEPROMReader() 
     {
         if (instance_count > 0)
         {
             const char* msg = "Only one instance of EEPROMReader is allowed at a time";
             Serial.println(msg);
+    #if THROW_ERRORS
             throw std::runtime_error(msg);
+    #endif
         }
 
-        EEPROM.begin(size);
+        EEPROM_CLASS.begin(size);
         instance_count++;
     }
 
-    EEPROMReader(EEPROMReader&& other)
-    {
-        fields = std::move(other.fields);
-        instance_count++;
-    }
+    // EEPROMReader(EEPROMReader&& other)
+    // {
+    //     fields = std::move(other.fields);
+    //     instance_count++;
+    // }
 
     EEPROMReader(const EEPROMReader&) = delete;
     EEPROMReader& operator=(const EEPROMReader&) = delete;
 
     ~EEPROMReader()
     {
-        EEPROM.end();
+        EEPROM_CLASS.end();
         instance_count--;
     }
 
@@ -235,7 +288,7 @@ public:
      */
     inline bool save(size_t startAddress = 0) noexcept
     {
-        return putTupleToEEPROM(fields, startAddress) && EEPROM.commit();
+        return putTupleToEEPROM(fields, startAddress) && EEPROM_CLASS.commit();
     }
 
 
@@ -246,10 +299,10 @@ public:
     */
     template <size_t index>
     inline auto get_field()
-    -> decltype(std::get<index>(fields))
+    -> decltype(getTupleItem<index>(fields))
     {
-        static_assert(std::tuple_size<decltype(fields)>::value > index, "get_field(): Index out of bounds");
-        return std::get<index>(fields);
+        static_assert(!checkIndexOutOfBounds<decltype(fields), index>(), "get_field(): Index out of bounds");
+        return getTupleItem<index>(fields);
     }
 
     /*
@@ -295,14 +348,17 @@ public:
      */
     template <size_t index>
     inline auto get_data()
-    -> decltype(std::forward<decltype(std::get<index>(fields).data)>(std::get<index>(fields).data))
+    -> decltype(forward<decltype(getTupleItem<index>(fields).data)>(getTupleItem<index>(fields).data))
     {
-        return std::forward<decltype(std::get<index>(fields).data)>(std::get<index>(fields).data);
+        return forward<decltype(getTupleItem<index>(fields).data)>(getTupleItem<index>(fields).data);
     }
 
     /*
     Get the data point from the tuple, with a given index. 
     If the field is a string, or it should be interpreted as an array, call `get_data` instead of `get`.
+
+    #### Throws 
+    `std::out_of_range` exception if the value_index is out of bounds
 
     ### Example
 
@@ -325,7 +381,7 @@ public:
     // reader.get_data<1>() = "Hello, World!";
 
     // Set the string field to the allocated memory
-    reader.get<2>() = "Arduino String"; // This is valid, since the String class has `operator=` overloaded
+    reader.get_data<2>() = "Arduino String"; // This is valid, since the String class has `operator=` overloaded
 
 
     // Also this is possible:
@@ -349,17 +405,22 @@ public:
      */
     template <size_t index>
     inline auto get(size_t value_index = 0) 
-    -> decltype(std::get<index>(fields).data[value_index]) 
+    -> decltype(getTupleItem<index>(fields).data[value_index]) 
     { 
-        static_assert(std::tuple_size<decltype(fields)>::value > index, "get(value_index = 0): Index out of bounds");
-        auto& field = std::get<index>(fields);
+        static_assert(!checkIndexOutOfBounds<decltype(fields), index>(), "get(value_index = 0): Index out of bounds");
+        auto& field = getTupleItem<index>(fields);
         if (value_index >= field.size)
         {
+    #if THROW_ERRORS
             throw std::out_of_range(
                 "get(value_index): `value_index` out of bounds: " 
                 + std::to_string(value_index) + " >= " 
                 + std::to_string(field.size)
             );
+    #else
+            Serial.println("get(value_index): `value_index` out of bounds");
+            return field.data[0];
+    #endif
         }
         return field.data[value_index];
     }

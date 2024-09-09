@@ -27,10 +27,22 @@ struct TupleImpl<Index, Head, Tail...> :
 
 // Tuple class
 template <typename... Elements>
-using Tuple = TupleImpl<0, Elements...>;
+struct Tuple : public TupleImpl<0, Elements...> {
+    // Size of the tuple
+    static constexpr size_t size() {
+        return sizeof...(Elements);
+    }
+};
 
 // Get item from tuple
 template <size_t Index, typename Head, typename... Tail>
 constexpr Head& get_item(TupleImpl<Index, Head, Tail...>& tuple) {
     return tuple.TupleElement<Index, Head>::value;
+}
+
+template <size_t Index, typename Tuple>
+constexpr auto get_tuple_item(Tuple& tuple) 
+-> decltype(get_item<Index>(tuple)) 
+{
+    return get_item<Index>(tuple);
 }

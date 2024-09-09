@@ -6,7 +6,7 @@ void setup(){
     // Initialize the serial port
     Serial.begin(115200);
 
-    // Create a reader object with 512 bytes of EEPROM memory
+    // Create a reader object with 128 bytes of EEPROM memory
     // With elements:
     // 1. int
     // 2. char[20]
