@@ -12,6 +12,7 @@ The EEPROMReader library is designed to simplify reading and writing to EEPROM o
 - **Easy to Use**: Simple API for reading and writing data.
 - **Memory Management**: Automatically handles memory allocation for strings and arrays.
 - **Error Handling**: Provides error checking and handling for out-of-bounds access.
+- **Board support**: Right now library supports: ESP32, ESP8266, and all Arduino boards.
 
 ## Installation
 
@@ -63,10 +64,6 @@ void loop(){
 }
 
 ```
-
-## Limitations
-
-- **Board compatibility**: Right now it works only with ESP32 and ESP8266 boards (ESP32 tested). Possibly I may add support for AVR boards in the future.
 
 ## License
 
