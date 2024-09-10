@@ -4,6 +4,9 @@
 
 void setup(){
     // Initialize the serial port
+    // You may need to change the baud rate to match your device
+    // For Arduino boards, the default baud rate is 9600
+    // For ESP32, the default baud rate is 115200
     Serial.begin(115200);
 
     // Create a reader object with 128 bytes of EEPROM memory
@@ -40,16 +43,20 @@ void setup(){
         writer.get<3>(1)[i] = i + 4; // set 4, 5, 6
     }
 
-    // Commit the changes to EEPROM
+    // Commit the changes to EEPROM, starting from address 10
     writer.save(10);
+
+    // Wait a bit, so that we can see the output message
+    delay(500);
 }
 
 void loop(){
     // Load the data from EEPROM, the types must match the ones used in `setup`
-    // Alocates 128 + 88 bytes of memory = 216 bytes, generally it uses `size` + 88 bytes of memory.
+    // In case of ESP32 Alocates 128 + 88 bytes of memory = 216 bytes, generally it uses `size` + 88 bytes of memory.
+    // On Arduino boards uses only 88 bytes of memory, since the EEPROM data isn't copied to an array.
     EEPROMReader<128, EF<int>, EFs<char, 20>, EStr, EFArr<int, 2, 3>> reader;
 
-    // Load the data from EEPROM
+    // Load the data from EEPROM, starting from address 10
     reader.load(10);
 
     // Print the data

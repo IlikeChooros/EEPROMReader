@@ -30,9 +30,6 @@
        #error "Unknown board"
     #endif
 
-    #define USE_STD_LIBS false
-    #define THROW_ERRORS false
-
 #elif defined(ESP8266) || defined(ESP32)
 
     // --------------- ESP -----------------
@@ -43,16 +40,12 @@
         #define BOARD "ESP32"
     #endif
 
-    #define USE_STD_LIBS true
-    #define THROW_ERRORS true
-
 #else
 
     // --------------- Arduino -----------------
 
-    #define USE_STD_LIBS false
-    #define ARDUINO_BOARDS
-    #define THROW_ERRORS false
+    // Whether to use Arduino's EEPROM library
+    #define ARDUINO_EEPROM 
 
     #if   defined(ARDUINO_AVR_ADK)       
         #define BOARD "Mega Adk"

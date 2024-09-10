@@ -1,43 +1,8 @@
 #pragma once
 
-#include "settings.h"
-#include "eeprom.h"
-
-#if USE_STD_LIBS
-#   include <type_traits>
-#   include <tuple>
-
-template <typename... Types>
-using tuple_t = std::tuple<Types...>;
-
-/**
- * @brief Get the item from the tuple
- * @tparam Tuple The tuple 
- * @tparam Index The index of the tuple
- */
-template <size_t Index, typename Tuple>
-constexpr auto getTupleItem(Tuple& tuple) 
--> decltype(std::get<Index>(tuple)) 
-{
-    return std::get<Index>(tuple);
-}
-
-// Check if the index is out of bounds
-template <typename Tuple, size_t Index>
-constexpr bool checkIndexOutOfBounds(){
-    return Index >= std::tuple_size<Tuple>::value;
-}
-
-template <typename T>
-constexpr auto forward(T& t) 
--> decltype(std::forward<T>(t))
-{
-    return std::forward<T>(t);
-}
-
-#else
-
-#   include "tuple.h"
+#include "settings.hpp"
+#include "eeprom.hpp"
+#include "tuple.hpp"
 
 template <typename... Types>
 using tuple_t = Tuple<Types...>;
@@ -55,11 +20,11 @@ constexpr bool checkIndexOutOfBounds(){
 }
 
 template <typename T>
-constexpr T&& forward(T& t) noexcept {
-    return static_cast<T&&>(t);
+constexpr T& refrence(T& t) noexcept {
+    return t;
 }
 
-#endif
+// ------------------ EEPROM Fields ------------------
 
 // EEROMFields stores an array of data in given type (or a single string)
 template <typename T, size_t N>
@@ -86,7 +51,7 @@ struct EEPROMStrings : public EEPROMFieldsArray<char, N, Len> {};
 // EEPROMString stores a single string in EEPROM (this is a C-style string)
 struct EEPROMString {
     String data; // This is possible because of the operator[] overloading in the String class
-    int size = 0;
+    int size = 1;
 };
 
 // Shortcut for EEPROMString
@@ -104,6 +69,8 @@ using EFs = EEPROMFields<Field, N>;
 template <typename T, size_t N, size_t Len>
 using EFArr = EEPROMFieldsArray<T, N, Len>;
 
+
+// ------------------ EEPROM Tuple Related Code ------------------
 
 /**
  * @brief Check if the address is out of bounds
@@ -189,6 +156,23 @@ bool readTupleFromEEPROM(Tuple& tuple, size_t& address = 0){
     return true;
 }
 
+
+// Verify that all elements' size is at least 1
+template <typename Tuple, size_t Index = 0>
+void checkElementsSize(Tuple& tuple){
+    if constexpr (!checkIndexOutOfBounds<Tuple, Index>()){
+        if (getTupleItem<Index>(tuple).size < 1){
+            const char* msg = "All elements must have a size of at least 1";
+            if (Serial)
+                Serial.println(msg);
+        }
+        checkElementsSize<Tuple, Index + 1>(tuple);
+    }
+}
+
+
+// ------------------ EEPROM Reader ------------------
+
 /**
  * @brief Provides memory storage for EEPROM, works similar to std::tuple, only 1 instance is allowed at a time
  * @tparam size The size of the EEPROM memory to be used
@@ -248,21 +232,15 @@ public:
         if (instance_count > 0)
         {
             const char* msg = "Only one instance of EEPROMReader is allowed at a time";
-            Serial.println(msg);
-    #if THROW_ERRORS
-            throw std::runtime_error(msg);
-    #endif
+            if (Serial)
+                Serial.println(msg);
         }
 
+        // Validate the size of the fields
+        checkElementsSize<decltype(fields)>(fields);
         EEPROM_CLASS.begin(size);
         instance_count++;
     }
-
-    // EEPROMReader(EEPROMReader&& other)
-    // {
-    //     fields = std::move(other.fields);
-    //     instance_count++;
-    // }
 
     EEPROMReader(const EEPROMReader&) = delete;
     EEPROMReader& operator=(const EEPROMReader&) = delete;
@@ -299,10 +277,10 @@ public:
     */
     template <size_t index>
     inline auto get_field()
-    -> decltype(getTupleItem<index>(fields))
+    -> decltype(refrence(getTupleItem<index>(fields)))
     {
         static_assert(!checkIndexOutOfBounds<decltype(fields), index>(), "get_field(): Index out of bounds");
-        return getTupleItem<index>(fields);
+        return refrence(getTupleItem<index>(fields));
     }
 
     /*
@@ -348,17 +326,14 @@ public:
      */
     template <size_t index>
     inline auto get_data()
-    -> decltype(forward<decltype(getTupleItem<index>(fields).data)>(getTupleItem<index>(fields).data))
+    -> decltype(refrence(getTupleItem<index>(fields).data))
     {
-        return forward<decltype(getTupleItem<index>(fields).data)>(getTupleItem<index>(fields).data);
+        return refrence(getTupleItem<index>(fields).data);
     }
 
     /*
     Get the data point from the tuple, with a given index. 
     If the field is a string, or it should be interpreted as an array, call `get_data` instead of `get`.
-
-    #### Throws 
-    `std::out_of_range` exception if the value_index is out of bounds
 
     ### Example
 
@@ -405,24 +380,17 @@ public:
      */
     template <size_t index>
     inline auto get(size_t value_index = 0) 
-    -> decltype(getTupleItem<index>(fields).data[value_index]) 
+    -> decltype(refrence(getTupleItem<index>(fields).data[0])) 
     { 
         static_assert(!checkIndexOutOfBounds<decltype(fields), index>(), "get(value_index = 0): Index out of bounds");
         auto& field = getTupleItem<index>(fields);
         if (value_index >= field.size)
         {
-    #if THROW_ERRORS
-            throw std::out_of_range(
-                "get(value_index): `value_index` out of bounds: " 
-                + std::to_string(value_index) + " >= " 
-                + std::to_string(field.size)
-            );
-    #else
-            Serial.println("get(value_index): `value_index` out of bounds");
+            if (Serial)
+                Serial.println("get(value_index): `value_index` out of bounds");
             return field.data[0];
-    #endif
         }
-        return field.data[value_index];
+        return refrence(field.data[value_index]);
     }
 };
 

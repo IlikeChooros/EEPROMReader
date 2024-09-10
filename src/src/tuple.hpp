@@ -2,9 +2,12 @@
 
 // Simple tuple implementation for Arduino boards.
 // Since the standard library is not available, we need to implement our own tuple.
+// This is a simplified version of the standard tuple, with only the necessary parts.
+// Source:
+// https://stackoverflow.com/questions/4041447/how-is-stdtuple-implemented
 
-// Tuple implementation
 
+// Tuple element
 template <size_t Index, typename Value>
 struct TupleElement {
     Value value;
