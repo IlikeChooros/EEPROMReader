@@ -1,6 +1,16 @@
 // Include the library
 #include <EEPROMReader.h>
 
+struct SomeData {
+    // These must be standard types.
+    int number;
+    char string[20];
+    float pi;
+
+    // Can't put here, because the `String` can't be converted to
+    // (uint8_t*) array, to be written to EEPROM.
+    // String str;
+};
 
 void setup(){
     // Initialize the serial port
@@ -21,7 +31,9 @@ void setup(){
     // EStr is a single String element
     // EFArr<type, rows, cols> is a 2D array with given type, rows and cols
     // And that's all there is to it!
-    EEPROMReader<128, EF<int>, EFs<char, 20>, EStr, EFArr<int, 2, 3>> writer;
+    EEPROMReader<128, EF<int>, EFs<char, 20>, EStr, EFArr<int, 2, 3>, EF<SomeData>> writer;
+
+    // Set the integer value
     writer.get<0>() = 123;
 
     // We interpret this as an array of 20 characters, so that means we should
@@ -43,6 +55,13 @@ void setup(){
         writer.get<3>(1)[i] = i + 4; // set 4, 5, 6
     }
 
+    // Set the SomeData struct
+    SomeData& data = writer.get<4>();
+    
+    data.number = 420;
+    strcpy(data.string, "Hello, struct!");
+    data.pi = 3.141592;
+
     // Commit the changes to EEPROM, starting from address 10
     writer.save(10);
 
@@ -52,9 +71,9 @@ void setup(){
 
 void loop(){
     // Load the data from EEPROM, the types must match the ones used in `setup`
-    // In case of ESP32 Alocates 128 + 88 bytes of memory = 216 bytes, generally it uses `size` + 88 bytes of memory.
-    // On Arduino boards uses only 88 bytes of memory, since the EEPROM data isn't copied to an array.
-    EEPROMReader<128, EF<int>, EFs<char, 20>, EStr, EFArr<int, 2, 3>> reader;
+    // In case of ESP32 Alocates 128 + sizeof(reader) bytes of memory
+    // On Arduino boards uses only sizeof(reader) bytes of memory, since the EEPROM data isn't copied to an array.
+    EEPROMReader<128, EF<int>, EFs<char, 20>, EStr, EFArr<int, 2, 3>, EF<SomeData>> reader;
 
     // Load the data from EEPROM, starting from address 10
     reader.load(10);
@@ -72,6 +91,13 @@ void loop(){
         }
         Serial.println();
     }
+
+    // Print the data from the struct
+    SomeData& data = reader.get<4>();
+    Serial.println("SomeData:");
+    Serial.println(data.number);
+    Serial.println(data.string);
+    Serial.println(data.pi, 6);
 
     while(1){
         yield();
