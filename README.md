@@ -4,14 +4,13 @@ Arduino EEPROM reader, with type templating for easy data reading.
 
 ## Overview
 
-The EEPROMReader library is designed to simplify reading and writing to EEPROM on Arduino devices. By using C++ type templating, you can store and retrieve various types of data with ease.
+The EEPROMReader library is designed to simplify reading and writing to EEPROM on Arduino devices. 
+By using C++ type templating, you can store and retrieve various types of data with ease.
 
 ## Features
 
 - **Type Templating**: Store and retrieve any data type using C++ templates.
 - **Easy to Use**: Simple API for reading and writing data.
-- **Memory Management**: Automatically handles memory allocation for strings and arrays.
-- **Error Handling**: Provides error checking and handling for out-of-bounds access.
 - **Board support**: Right now library supports: ESP32, ESP8266, and all Arduino boards.
 
 ## Installation
@@ -35,7 +34,7 @@ void write(){
     strcpy(writer.get_data<1>(), "Hello, CWorld!");
 
     // This is a string, so we can set the value directly, 
-    // note that `get_data` is needed for this to work.
+    // note that `get_data` is needed to set the value to the whole string.
     writer.get_data<2>() = "Hello, EEPROM!";
 
     // Save the data to EEPROM
