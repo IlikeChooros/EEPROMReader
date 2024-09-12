@@ -4,8 +4,9 @@ Arduino EEPROM reader, with type templating for easy data reading.
 
 ## Overview
 
-The EEPROMReader library is designed to simplify reading and writing to EEPROM on Arduino devices. 
-By using C++ type templating, you can store and retrieve various types of data with ease.
+The EEPROMReader library is designed to simplify reading and writing to EEPROM on Arduino devices.  
+By using C++ type templating, you can store and retrieve various types of data with ease.   
+Tested on ESP32 and Arduino UNO.
 
 ## Features
 

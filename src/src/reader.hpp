@@ -79,7 +79,7 @@ using EFArr = EEPROMFieldsArray<T, N, Len>;
  */
 template <typename Tuple, size_t Index>
 bool checkAddressOutOfBounds(Tuple& tuple, size_t& address){
-    return address + getTupleItem<Index>(tuple).size >= EEPROM_CLASS.length();
+    return address + getTupleItem<Index>(tuple).size >= EEPROM_CLASS.get_eeprom_size();
 }
 
 /**
@@ -156,21 +156,6 @@ bool readTupleFromEEPROM(Tuple& tuple, size_t& address = 0){
     return true;
 }
 
-
-// Verify that all elements' size is at least 1
-template <typename Tuple, size_t Index = 0>
-void checkElementsSize(Tuple& tuple){
-    if constexpr (!checkIndexOutOfBounds<Tuple, Index>()){
-        if (getTupleItem<Index>(tuple).size < 1){
-            const char* msg = "All elements must have a size of at least 1";
-            if (Serial)
-                Serial.println(msg);
-        }
-        checkElementsSize<Tuple, Index + 1>(tuple);
-    }
-}
-
-
 // ------------------ EEPROM Reader ------------------
 
 /**
@@ -224,36 +209,29 @@ class EEPROMReader
 {
     tuple_t<Fields...> fields;
 public:
-    static int instance_count;
 
-    // Constructor, initializes the EEPROM memory, calls EEPROM_CLASS.begin(size)
+    // C'tors
     EEPROMReader() 
     {
-        if (instance_count > 0)
-        {
-            const char* msg = "Only one instance of EEPROMReader is allowed at a time";
-            if (Serial)
-                Serial.println(msg);
-        }
-
-        // Validate the size of the fields
-        checkElementsSize<decltype(fields)>(fields);
-        EEPROM_CLASS.begin(size);
-        instance_count++;
+        EEPROM_CLASS.begin(size); // Set the size of the EEPROM memory
     }
 
     EEPROMReader(const EEPROMReader&) = delete;
     EEPROMReader& operator=(const EEPROMReader&) = delete;
 
-    ~EEPROMReader()
+
+    /**
+     * @brief Get the size of the EEPROM memory
+     * @return The size of the EEPROM memory
+     */
+    static constexpr size_t get_size() noexcept
     {
-        EEPROM_CLASS.end();
-        instance_count--;
+        return size;
     }
 
     /**
      * @brief Loads the data from EEPROM, with a given start address
-     * @return True if all data was read successfully, false otherwise (the data was loaded up to some point)
+     * @return True if all data was read successfully, false otherwise (the data will be correct up to the point of failure)
      */
     inline bool load(size_t startAddress = 0) noexcept
     {
@@ -269,6 +247,16 @@ public:
         return putTupleToEEPROM(fields, startAddress) && EEPROM_CLASS.commit();
     }
 
+    /**
+     * @brief Get the EEPROM class instance
+     * @return The EEPROM class instance
+     */
+    inline constexpr auto get_eeprom() noexcept 
+    -> decltype(refrence(EEPROM_CLASS))
+    {
+        return refrence(EEPROM_CLASS);
+    }
+
 
     /*
     
@@ -279,7 +267,6 @@ public:
     inline auto get_field()
     -> decltype(refrence(getTupleItem<index>(fields)))
     {
-        static_assert(!checkIndexOutOfBounds<decltype(fields), index>(), "get_field(): Index out of bounds");
         return refrence(getTupleItem<index>(fields));
     }
 
@@ -334,6 +321,7 @@ public:
     /*
     Get the data point from the tuple, with a given index. 
     If the field is a string, or it should be interpreted as an array, call `get_data` instead of `get`.
+    It's user's responsibility to make sure that the `value_index` is not out of bounds.
 
     ### Example
 
@@ -382,17 +370,6 @@ public:
     inline auto get(size_t value_index = 0) 
     -> decltype(refrence(getTupleItem<index>(fields).data[0])) 
     { 
-        static_assert(!checkIndexOutOfBounds<decltype(fields), index>(), "get(value_index = 0): Index out of bounds");
-        auto& field = getTupleItem<index>(fields);
-        if (value_index >= field.size)
-        {
-            if (Serial)
-                Serial.println("get(value_index): `value_index` out of bounds");
-            return field.data[0];
-        }
-        return refrence(field.data[value_index]);
+        return refrence(getTupleItem<index>(fields).data[value_index]);
     }
 };
-
-template <size_t size, typename... Fields>
-int EEPROMReader<size, Fields...>::instance_count = 0;

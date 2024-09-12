@@ -17,9 +17,10 @@ void setup(){
     // You may need to change the baud rate to match your device
     // For Arduino boards, the default baud rate is 9600
     // For ESP32, the default baud rate is 115200
-    Serial.begin(115200);
+    Serial.begin(9600);
 
-    // Create a reader object with 128 bytes of EEPROM memory
+    // Create a reader object with 128 bytes of EEPROM memory.
+    // Starting from address 0 up to 127.
     // With elements:
     // 1. int
     // 2. char[20]
@@ -45,25 +46,28 @@ void setup(){
     // if you want to modify the whole string
     writer.get_data<2>() = "Mystirng"; 
     
-    // Set the first row of the 2x3 array
-    writer.get<3>(0)[0] = 1;
-    writer.get<3>(0)[1] = 2;
-    writer.get<3>(0)[2] = 3;
-
-    // This is also valid
-    for(int i = 0; i < 3; i++){
-        writer.get<3>(1)[i] = i + 4; // set 4, 5, 6
+    // Set the matrix
+    for(int i = 0; i < 2; i++){
+        for(int j = 0; j < 3; j++){
+            writer.get<3>(i)[j] = i * 3 + j;
+        }
     }
 
     // Set the SomeData struct
     SomeData& data = writer.get<4>();
-    
+
     data.number = 420;
     strcpy(data.string, "Hello, struct!");
     data.pi = 3.141592;
 
+    Serial.println("Writing data to EEPROM...");
+
     // Commit the changes to EEPROM, starting from address 10
-    writer.save(10);
+    if (writer.save(10)){
+        Serial.println("Data written to EEPROM!");
+    } else {
+        Serial.println("Failed to write data to EEPROM!");
+    }
 
     // Wait a bit, so that we can see the output message
     delay(500);
@@ -76,28 +80,32 @@ void loop(){
     EEPROMReader<128, EF<int>, EFs<char, 20>, EStr, EFArr<int, 2, 3>, EF<SomeData>> reader;
 
     // Load the data from EEPROM, starting from address 10
-    reader.load(10);
+    if (reader.load(10)){
+        // Print the data
+        Serial.println(reader.get<0>());
+        Serial.println(reader.get_data<1>());
+        Serial.println(reader.get_data<2>());
 
-    // Print the data
-    Serial.println(reader.get<0>());
-    Serial.println(reader.get_data<1>());
-    Serial.println(reader.get_data<2>());
-
-    // Print the 2x3 array
-    for(int i = 0; i < 2; i++){
-        for(int j = 0; j < 3; j++){
-            Serial.print(reader.get<3>(i)[j]);
-            Serial.print(" ");
+        // Print the 2x3 array
+        for(int i = 0; i < 2; i++){
+            for(int j = 0; j < 3; j++){
+                Serial.print(reader.get<3>(i)[j]);
+                Serial.print(" ");
+            }
+            Serial.println();
         }
-        Serial.println();
-    }
 
-    // Print the data from the struct
-    SomeData& data = reader.get<4>();
-    Serial.println("SomeData:");
-    Serial.println(data.number);
-    Serial.println(data.string);
-    Serial.println(data.pi, 6);
+        // Print the data from the struct
+        SomeData& data = reader.get<4>();
+        Serial.println("SomeData:");
+        Serial.println(data.number);
+        Serial.println(data.string);
+        Serial.println(data.pi, 6);
+    } else {
+        Serial.println("Failed to read data from EEPROM!");
+    }    
+
+    Serial.println("...Done!");
 
     while(1){
         yield();
