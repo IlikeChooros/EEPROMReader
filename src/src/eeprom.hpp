@@ -1,8 +1,6 @@
 #pragma once
 
 #include "settings.hpp"
-#include <EEPROM.h>
-
 
 // All EEPROM classes must have implemented the following methods:
 // - begin(int size)
@@ -17,27 +15,19 @@
 
 #if defined(ARDUINO_EEPROM)
 
-// For Arduino boards
-class BaseArduinoEEPROMClass {
-protected:
-    int max_size = 0; // This is the size defined by the user
-public:
-    virtual void begin(int size) = 0;
-    virtual bool commit() = 0;
-    virtual int writeString(int index, const String &value) = 0;
-    virtual int writeString(int index, const char *value) = 0;
-    virtual String readString(int index) = 0;
+#include <EEPROM.h>
 
-    // Get the maximum size of the EEPROM, defined by the user
+// EEPROM class wrapper for Arduino EEPROM library, since it doesn't support writing strings.
+class EEPROMArduinoClass: public EEPROMClass {
+    int max_size = 0;
+public:
+
+    // Get the maximum size of the EEPROM
     int get_eeprom_size() 
     {
         return max_size;
     }
-};
 
-// EEPROM class wrapper for Arduino EEPROM library, since it doesn't support writing strings.
-class EEPROMArduinoClass: public EEPROMClass, public BaseArduinoEEPROMClass {
-public:
     // Set the maximum size of the EEPROM
     void begin(int size) 
     {
@@ -103,12 +93,15 @@ static EEPROMArduinoClass EEPROM_CLASS = EEPROMArduinoClass();
 
 #if defined(ESP8266) || defined(ESP32)
 
+#define NO_GLOBAL_EEPROM
+#include <EEPROM.h>
+
 // For ESP8266 and ESP32
 class EEPROMESPClass: public EEPROMClass {
 public:
     inline int get_eeprom_size() 
     {
-        return EEPROM.length();
+        return this->length();
     }
 };
 
