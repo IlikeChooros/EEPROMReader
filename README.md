@@ -15,7 +15,7 @@ By using C++ type templating, you can store and retrieve various types of data w
 Tested on ESP32 and Arduino UNO.
 
 ```cpp
-#include <EEPROMReader.h>
+#include <Teeprom.h>
 
 struct MyData{
     int number;
@@ -25,7 +25,7 @@ struct MyData{
 void write(){
     // Create a 'writer' with 128 bytes of EEPROM memory,
     // with an integer field, a string field, an array of 20 chars and 'MyData' struct
-    EEPROMReader<128, EF<int>, EFs<char, 20>, EStr, EF<MyData>> writer;
+    Teeprom<128, EF<int>, EFs<char, 20>, EStr, EF<MyData>> writer;
     writer.get<0>() = 123; // Set the integer field to 123
     
     // This is an char array, so we need to use strcpy to set the value
@@ -45,7 +45,7 @@ void write(){
 
 void load(){
     // Create a reader with the same fields as the `writer`
-    EEPROMReader<128, EF<int>, EFs<char, 20>, EStr, EF<MyData>> reader;
+    Teeprom<128, EF<int>, EFs<char, 20>, EStr, EF<MyData>> reader;
     reader.load(); // Load the data from EEPROM
 
     // Get the values from the reader

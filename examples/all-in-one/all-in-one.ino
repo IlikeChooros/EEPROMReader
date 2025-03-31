@@ -1,23 +1,44 @@
 // Include the library
-#include <EEPROMReader.h>
+#include <Teeprom.h>
 
 struct SomeData {
     // These must be standard types.
     int number;
-    char string[20];
     float pi;
+    char string[20];
 
     // Can't put here, because the `String` can't be converted to
     // (uint8_t*) array, to be written to EEPROM.
     // String str;
 };
 
-void setup(){
+typedef struct {
+    // String ssid;
+    // String pass;
+    char ssid[20];
+    char pass[20];
+} NetworkData;
+
+typedef struct {
+    char name[20];
+    // String name;
+    uint8_t index;
+} LocationData;
+
+// typedef Teeprom<512, EF<uint8_t>, EFs<NetworkData, 5>, EF<uint8_t>, EFs<LocationData, 2>> memory_layout_t;
+
+// Typedef this for convenience
+typedef Teeprom<128, EF<int>, EFs<char, 20>, EStr, EFArr<int, 2, 3>, EF<SomeData>> Teeprom128;
+
+void setup()
+{
+    delay(300);
+
     // Initialize the serial port
     // You may need to change the baud rate to match your device
     // For Arduino boards, the default baud rate is 9600
     // For ESP32, the default baud rate is 115200
-    Serial.begin(9600);
+    Serial.begin(115200);
 
     // Create a reader object with 128 bytes of EEPROM memory.
     // Starting from address 0 up to 127.
@@ -32,7 +53,10 @@ void setup(){
     // EStr is a single String element
     // EFArr<type, rows, cols> is a 2D array with given type, rows and cols
     // And that's all there is to it!
-    EEPROMReader<128, EF<int>, EFs<char, 20>, EStr, EFArr<int, 2, 3>, EF<SomeData>> writer;
+    Teeprom128 writer;
+
+    Serial.print("\nTotal bytesize of elements: ");
+    Serial.println(writer.bytesize());
 
     // Set the integer value
     writer.get<0>() = 123;
@@ -77,7 +101,7 @@ void loop(){
     // Load the data from EEPROM, the types must match the ones used in `setup`
     // In case of ESP32 Alocates 128 + sizeof(reader) bytes of memory
     // On Arduino boards uses only sizeof(reader) bytes of memory, since the EEPROM data isn't copied to an array.
-    EEPROMReader<128, EF<int>, EFs<char, 20>, EStr, EFArr<int, 2, 3>, EF<SomeData>> reader;
+    Teeprom128 reader;
 
     // Load the data from EEPROM, starting from address 10
     if (reader.load(10)){
@@ -101,6 +125,23 @@ void loop(){
         Serial.println(data.number);
         Serial.println(data.string);
         Serial.println(data.pi, 6);
+
+        // Print the whole buffer
+        Serial.println("Buffer:");
+        auto buffer = reader.data();
+        auto end = 10 + reader.bytesize();
+        for (int i = 10; i < end; i++) {
+            if (isalpha(buffer[i])) {
+                Serial.print((char)buffer[i]);
+            } else {
+                Serial.print(buffer[i]);
+            }
+            if ((i - 10) % 16 == 15) 
+                Serial.println();
+            else
+                Serial.print(" ");
+        }
+
     } else {
         Serial.println("Failed to read data from EEPROM!");
     }    

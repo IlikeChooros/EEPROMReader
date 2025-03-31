@@ -1,47 +1,55 @@
 #pragma once
 
+// TODO: Add support for Arduino boards with this
+#include <type_traits>
+
 #include "settings.hpp"
 #include "eeprom.hpp"
 #include "tuple.hpp"
+
+BEGIN_DETAIL_TEEPROM_NAMESPACE
 
 template <typename... Types>
 using tuple_t = Tuple<Types...>;
 
 template <size_t Index, typename Tuple>
-constexpr auto getTupleItem(Tuple& tuple)
+constexpr auto getTupleItem(Tuple& tuple) noexcept
 -> decltype(get_tuple_item<Index>(tuple))
 {
     return get_tuple_item<Index>(tuple);
 }
 
-template <typename Tuple, size_t Index>
-constexpr bool checkIndexOutOfBounds(){
-    return Index >= Tuple::size();
-}
-
 template <typename T>
 constexpr T& refrence(T& t) noexcept {
-    return t;
+    return static_cast<T&>(t);
+}
+
+/**
+ * @brief Returns true if the index is out of bounds
+ */
+template <typename Tuple, size_t Index>
+constexpr bool checkIndexOutOfBounds() noexcept {
+    return Index >= Tuple::size();
 }
 
 // ------------------ EEPROM Fields ------------------
 
+struct BaseEEPROMField {};
+
 // EEROMFields stores an array of data in given type (or a single string)
 template <typename T, size_t N>
-struct EEPROMFields {
+struct EEPROMFields : public BaseEEPROMField {
     T data[N];
-    const int size = sizeof(data);
 };
 
 // EEPROMField stores a single data in given type
 template <typename T>
-struct EEPROMField : public EEPROMFields<T, 1> {};
+struct EEPROMField : public EEPROMFields<T, 1>, public BaseEEPROMField {};
 
 // EEPROMFieldArray stores a 2D array of data in given type (used mainly for strings)
 template <typename T, size_t N, size_t Len>
-struct EEPROMFieldsArray {
+struct EEPROMFieldsArray : public BaseEEPROMField {
     T data[N][Len];
-    const int size = sizeof(data);
 };
 
 // EEPROMStrings stores an array of strings in EEPROM
@@ -49,28 +57,40 @@ template <size_t N, size_t Len>
 struct EEPROMStrings : public EEPROMFieldsArray<char, N, Len> {};
 
 // EEPROMString stores a single string in EEPROM (this is a C-style string)
-struct EEPROMString {
+struct EEPROMString : public BaseEEPROMField {
     String data; // This is possible because of the operator[] overloading in the String class
-    int size = 1;
 };
-
-// Shortcut for EEPROMString
-using EStr = EEPROMString;
-
-// Shortcut for EEPROMField
-template <typename Field>
-using EF = EEPROMField<Field>;
-
-// Shortcut for EEPROMFields
-template <typename Field, size_t N>
-using EFs = EEPROMFields<Field, N>;
-
-// Shortcut for EEPROMFieldsArray (2D array N x Len of data)
-template <typename T, size_t N, size_t Len>
-using EFArr = EEPROMFieldsArray<T, N, Len>;
 
 
 // ------------------ EEPROM Tuple Related Code ------------------
+
+// Get the size of the field (in bytes)
+template <typename Field>
+inline size_t getFieldSize(Field& field) noexcept 
+{
+    static_assert(
+        std::is_base_of<BaseEEPROMField, Field>::value,
+        "getFieldSize: Field must be of type EEPROMField, EEPROMString, or EEPROMFields"
+    );
+    return sizeof(field.data);
+}
+
+// Specialization for strings
+template<>
+inline size_t getFieldSize<EEPROMString>(EEPROMString& field) noexcept 
+{
+    return field.data.length() + 1; // +1 for the null terminator
+}
+
+// Get total byte size of the tuple
+template<typename Tuple, size_t Index = 0>
+inline size_t getTupleBytesize(Tuple& tuple) noexcept
+{
+    if constexpr (!checkIndexOutOfBounds<Tuple, Index>()){
+        return getFieldSize(getTupleItem<Index>(tuple)) + getTupleBytesize<Tuple, Index + 1>(tuple);
+    }
+    return 0;
+}
 
 /**
  * @brief Check if the address is out of bounds
@@ -78,8 +98,8 @@ using EFArr = EEPROMFieldsArray<T, N, Len>;
  * @tparam Index The index of the tuple
  */
 template <typename Tuple, size_t Index>
-bool checkAddressOutOfBounds(Tuple& tuple, size_t& address){
-    return address + getTupleItem<Index>(tuple).size >= EEPROM_CLASS.get_eeprom_size();
+inline bool checkAddressOutOfBounds(Tuple& tuple, size_t& address) noexcept {
+    return address + getFieldSize(getTupleItem<Index>(tuple)) >= EEPROM_CLASS.get_eeprom_size();
 }
 
 /**
@@ -87,16 +107,16 @@ bool checkAddressOutOfBounds(Tuple& tuple, size_t& address){
  * @tparam Field The field must have a `data` field
  */
 template <typename Field>
-inline void putToEEPROM(Field& field, size_t& address){
+inline void putToEEPROM(Field& field, size_t& address) noexcept {
     EEPROM_CLASS.put(address, field.data);
-    address += sizeof(field.data);
+    address += getFieldSize(field);
 }
 
 // Specialization for strings
 template <>
-inline void putToEEPROM<EEPROMString>(EEPROMString& field, size_t& address){
-    field.size = EEPROM_CLASS.writeString(address, field.data.c_str());
-    address += field.size + 1;
+inline void putToEEPROM<EEPROMString>(EEPROMString& field, size_t& address) noexcept {
+    EEPROM_CLASS.writeString(address, field.data.c_str());
+    address += getFieldSize(field);
 }
 
 /**
@@ -105,7 +125,8 @@ inline void putToEEPROM<EEPROMString>(EEPROMString& field, size_t& address){
  * @return True if all data was saved successfully, false otherwise
  */
 template <typename Tuple, size_t Index = 0>
-bool putTupleToEEPROM(Tuple& tuple, size_t& address = 0){
+inline bool putTupleToEEPROM(Tuple& tuple, size_t& address = 0) noexcept 
+{
     // If the index is less than the size of the tuple, put the data to EEPROM
     if constexpr (!checkIndexOutOfBounds<Tuple, Index>()){
         // If the address is out of bounds, return
@@ -123,17 +144,16 @@ bool putTupleToEEPROM(Tuple& tuple, size_t& address = 0){
  * @tparam Field The field must have `data` and `size` fields
  */
 template <typename Field>
-inline void readFromEEPROM(Field& field, size_t& address){
+inline void readFromEEPROM(Field& field, size_t& address) noexcept {
     EEPROM_CLASS.get(address, field.data);
-    address += sizeof(field.data);
+    address += getFieldSize(field);
 }
 
 // Specialization for strings
 template <>
-inline void readFromEEPROM<EEPROMString>(EEPROMString& field, size_t& address){
-    field.data = EEPROM_CLASS.readString(address);
-    field.size = field.data.length();
-    address += field.size + 1;
+inline void readFromEEPROM<EEPROMString>(EEPROMString& field, size_t& address) noexcept {
+    field.data  = EEPROM_CLASS.readString(address);
+    address    += getFieldSize(field);
 }
 
 
@@ -143,7 +163,8 @@ inline void readFromEEPROM<EEPROMString>(EEPROMString& field, size_t& address){
  * @return True if all data was read successfully, false otherwise
  */
 template <typename Tuple, size_t Index = 0>
-bool readTupleFromEEPROM(Tuple& tuple, size_t& address = 0){
+inline bool readTupleFromEEPROM(Tuple& tuple, size_t& address = 0) noexcept 
+{
     // If the index is less than the size of the tuple, put the data to EEPROM
     if constexpr (!checkIndexOutOfBounds<Tuple, Index>()){
         // If the address is out of bounds, return
@@ -155,6 +176,60 @@ bool readTupleFromEEPROM(Tuple& tuple, size_t& address = 0){
     }
     return true;
 }
+
+// template <typename Type, typename CmpType>
+// constexpr bool isSameType() { return std::is_same<Type, CmpType>::value; }
+
+// Remove reference from a type
+template <typename T>
+struct remove_reference { typedef T type; };
+
+template <typename T>
+struct remove_reference<T&> { typedef T type; };
+
+template <typename T>
+using remove_reference_t = typename remove_reference<T>::type;
+
+
+// Check if the type is a base of another type
+template <typename Base, typename Derived>
+constexpr bool isBaseOf() { 
+    return std::is_base_of<Base, remove_reference_t<Derived>>::value; 
+}
+
+// Verify all tuple fields
+template <typename Tuple, size_t Index = 0>
+inline void verifyFields(Tuple& tuple) noexcept
+{
+    if constexpr (!checkIndexOutOfBounds<Tuple, Index>())
+    {
+        // If the field is a string, check if the size is correct
+        static_assert(isBaseOf<BaseEEPROMField, decltype(getTupleItem<Index>(tuple))>(), 
+            "Field failure: all fields must be of type EEPROMField, EEPROMString, or EEPROMFields");
+
+        // Go through the rest of the tuple
+        verifyFields<Tuple, Index + 1>(tuple);
+    }
+}
+
+END_DETAIL_TEEPROM_NAMESPACE
+
+// Shortcut for EEPROMString
+using EStr = TEEPROM_NAMESPACE::EEPROMString;
+
+// Shortcut for EEPROMField
+template <typename Field>
+using EF = TEEPROM_NAMESPACE::EEPROMField<Field>;
+
+// Shortcut for EEPROMFields
+template <typename Field, size_t N>
+using EFs = TEEPROM_NAMESPACE::EEPROMFields<Field, N>;
+
+// Shortcut for EEPROMFieldsArray (2D array N x Len of data)
+template <typename T, size_t N, size_t Len>
+using EFArr = TEEPROM_NAMESPACE::EEPROMFieldsArray<T, N, Len>;
+
+
 
 // ------------------ EEPROM Reader ------------------
 
@@ -176,7 +251,7 @@ bool readTupleFromEEPROM(Tuple& tuple, size_t& address = 0){
  * 
  * ```
  * 
- * EEPROMReader<512, EEPROMField<int>, EEPROMString, EEPROMFields<float, 4>> reader;
+ * Teeprom<512, EEPROMField<int>, EEPROMString, EEPROMFields<float, 4>> reader;
  * 
  * reader.get<0>() = 10;
  * 
@@ -192,7 +267,7 @@ bool readTupleFromEEPROM(Tuple& tuple, size_t& address = 0){
  * 
  * ```
  * 
- * EEPROMReader<512, EEPROMField<int>, EEPROMString, EEPROMFields<float, 4>> reader;
+ * Teeprom<512, EEPROMField<int>, EEPROMString, EEPROMFields<float, 4>> reader;
  * 
  * reader.load(); // Load the data from EEPROM
  * 
@@ -204,29 +279,59 @@ bool readTupleFromEEPROM(Tuple& tuple, size_t& address = 0){
  * 
  * ```
  */
-template <size_t size, typename... Fields>
-class EEPROMReader 
+template <size_t Size, typename... Fields>
+class Teeprom 
 {
-    tuple_t<Fields...> fields;
+    TEEPROM_NAMESPACE::tuple_t<Fields...> M_fields;
 public:
 
+    static_assert(
+        (sizeof...(Fields) > 0),
+        "At least one field must be provided"
+    );
+
+    static_assert(
+        Size > 0,
+        "Teeprom Size must be greater than 0"
+    );
+
+    typedef uint8_t* pointer;
+
     // C'tors
-    EEPROMReader() 
+    Teeprom() 
     {
-        EEPROM_CLASS.begin(size); // Set the size of the EEPROM memory
+        TEEPROM_NAMESPACE::verifyFields(M_fields); // Verify the fields
+        EEPROM_CLASS.begin(Size); // Set the size of the EEPROM memory
     }
 
-    EEPROMReader(const EEPROMReader&) = delete;
-    EEPROMReader& operator=(const EEPROMReader&) = delete;
+    Teeprom(const Teeprom&) = delete;
+    Teeprom& operator=(const Teeprom&) = delete;
 
 
     /**
-     * @brief Get the size of the EEPROM memory
-     * @return The size of the EEPROM memory
+     * @brief Get the size of the EEPROM memory, specified by the user
      */
-    static constexpr size_t get_size() noexcept
+    static constexpr size_t eeprom_size() noexcept
     {
-        return size;
+        return Size;
+    }
+
+    /**
+     * @brief Get the total size of the tuple in bytes
+     */
+    inline size_t bytesize() noexcept
+    {
+        return TEEPROM_NAMESPACE::getTupleBytesize(M_fields);
+    }
+
+    /**
+     * @brief Check if given template arguments can fit into specified EEPROM size
+     * @return True if valid
+     */
+    inline bool valid(size_t startAddress = 0) noexcept
+    {
+        return (startAddress < Size) 
+            && ((Size - startAddress) >= TEEPROM_NAMESPACE::getTupleBytesize(M_fields));
     }
 
     /**
@@ -235,7 +340,7 @@ public:
      */
     inline bool load(size_t startAddress = 0) noexcept
     {
-        return readTupleFromEEPROM(fields, startAddress);
+        return TEEPROM_NAMESPACE::readTupleFromEEPROM(M_fields, startAddress);
     }
 
     /**
@@ -244,7 +349,17 @@ public:
      */
     inline bool save(size_t startAddress = 0) noexcept
     {
-        return putTupleToEEPROM(fields, startAddress) && EEPROM_CLASS.commit();
+        return TEEPROM_NAMESPACE::putTupleToEEPROM(M_fields, startAddress) 
+            && EEPROM_CLASS.commit();
+    }
+
+    /**
+     * @brief Get the buffer pointer to the underlying EEPROM memory,
+     * may not work on Arduino boards (returns nullptr), since data is not copied to a buffer
+     */
+    inline pointer data() noexcept
+    {
+        return EEPROM_CLASS.getDataPtr();
     }
 
     /**
@@ -252,9 +367,11 @@ public:
      * @return The EEPROM class instance
      */
     inline constexpr auto get_eeprom() noexcept 
-    -> decltype(refrence(EEPROM_CLASS))
+    -> decltype(TEEPROM_NAMESPACE::refrence(
+        EEPROM_CLASS))
     {
-        return refrence(EEPROM_CLASS);
+        return TEEPROM_NAMESPACE::refrence(
+            EEPROM_CLASS);
     }
 
 
@@ -264,10 +381,12 @@ public:
     
     */
     template <size_t index>
-    inline auto get_field()
-    -> decltype(refrence(getTupleItem<index>(fields)))
+    inline auto get_field() noexcept
+    -> decltype(TEEPROM_NAMESPACE::refrence(
+        TEEPROM_NAMESPACE::getTupleItem<index>(M_fields)))
     {
-        return refrence(getTupleItem<index>(fields));
+        return TEEPROM_NAMESPACE::refrence(
+            TEEPROM_NAMESPACE::getTupleItem<index>(M_fields));
     }
 
     /*
@@ -280,7 +399,7 @@ public:
 
     // Create a reader with 512 bytes of EEPROM memory,
     // String field, an array of 20 uint8_t, and an array of 4 floats, and a single int
-    EEPROMReader<512, EStr, EFs<uint8_t, 20>, EFs<float, 4>, EF<int>> reader;
+    Teeprom<512, EStr, EFs<uint8_t, 20>, EFs<float, 4>, EF<int>> reader;
 
     reader.get_data<0>() = "Hello, World!"; // Set the string field
 
@@ -301,7 +420,7 @@ public:
     
     // Later in the code
 
-    EEPROMReader<512, EStr, EFs<uint8_t, 20>, EFs<float, 4>, EF<int>> loader;
+    Teeprom<512, EStr, EFs<uint8_t, 20>, EFs<float, 4>, EF<int>> loader;
     loader.load(); // Load the data from EEPROM
 
     String str = loader.get_data<0>(); // Get the string field
@@ -312,10 +431,12 @@ public:
     ```
      */
     template <size_t index>
-    inline auto get_data()
-    -> decltype(refrence(getTupleItem<index>(fields).data))
+    inline auto get_data() noexcept
+    -> decltype(TEEPROM_NAMESPACE::refrence(
+        TEEPROM_NAMESPACE::getTupleItem<index>(M_fields).data))
     {
-        return refrence(getTupleItem<index>(fields).data);
+        return TEEPROM_NAMESPACE::refrence(
+            TEEPROM_NAMESPACE::getTupleItem<index>(M_fields).data);
     }
 
     /*
@@ -329,7 +450,7 @@ public:
 
     // Create a reader with 512 bytes of EEPROM memory,
     // with an integer field, a string field, and an array of 20 chars
-    EEPROMReader<512, EF<int>, EFs<char, 20>, EStr> reader;
+    Teeprom<512, EF<int>, EFs<char, 20>, EStr> reader;
 
     reader.get<0>() = 10;  // Set the integer field to 10, same as reader.get<0>(0)
 
@@ -357,7 +478,7 @@ public:
 
     // Later in the code
 
-    EEPROMReader<512, EF<int>, EFs<char, 20>, EStr> loader;
+    Teeprom<512, EF<int>, EFs<char, 20>, EStr> loader;
     loader.load(); // Load the data from EEPROM
 
     Serial.println(loader.get<0>()); // Get the integer field
@@ -366,10 +487,12 @@ public:
 
     ```
      */
-    template <size_t index>
-    inline auto get(size_t value_index = 0) 
-    -> decltype(refrence(getTupleItem<index>(fields).data[0])) 
+    template <size_t Index>
+    inline auto get(size_t value_index = 0) noexcept
+    -> decltype(TEEPROM_NAMESPACE::refrence(
+        TEEPROM_NAMESPACE::getTupleItem<Index>(M_fields).data[0])) 
     { 
-        return refrence(getTupleItem<index>(fields).data[value_index]);
+        return TEEPROM_NAMESPACE::refrence(
+            TEEPROM_NAMESPACE::getTupleItem<Index>(M_fields).data[value_index]);
     }
 };

@@ -6,6 +6,12 @@
 // Source:
 // https://stackoverflow.com/questions/4041447/how-is-stdtuple-implemented
 
+#include <cstddef>
+
+#include "namespaces.hpp"
+
+
+BEGIN_DETAIL_TEEPROM_NAMESPACE
 
 // Tuple element
 template <size_t Index, typename Value>
@@ -49,3 +55,6 @@ constexpr auto get_tuple_item(Tuple& tuple)
 {
     return get_item<Index>(tuple);
 }
+
+
+END_DETAIL_TEEPROM_NAMESPACE

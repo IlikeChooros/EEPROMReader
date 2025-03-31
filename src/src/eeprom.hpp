@@ -12,6 +12,7 @@
 // - template<typename T> T& get(int index)
 // - template<typename T> void put(int index, const T& value)
 
+// BEGIN_DETAIL_TEEPROM_NAMESPACE
 
 #if defined(ARDUINO_EEPROM)
 
@@ -19,78 +20,45 @@
 
 // EEPROM class wrapper for Arduino EEPROM library, since it doesn't support writing strings.
 class EEPROMArduinoClass: public EEPROMClass {
-    int max_size = 0;
+
+    int M_max_size = 0;
 public:
 
     // Get the maximum size of the EEPROM
-    int get_eeprom_size() 
-    {
-        return max_size;
-    }
+    inline int get_eeprom_size() noexcept { return M_max_size; }
 
     // Set the maximum size of the EEPROM
-    void begin(int size) 
+    void begin(int size) noexcept
     {
-        max_size = size;
-        if (max_size > EEPROM.length())
-            max_size = EEPROM.length();
+        M_max_size = size;
+        if (M_max_size > EEPROM.length())
+            M_max_size = EEPROM.length();
     }
 
     // Commit the changes to the EEPROM, by default it will always return true
-    bool commit() 
-    {
-        return true;
-    }
+    bool commit() noexcept { return true; }
+
+    // Get buffer pointer to the EEPROM memory (for compatibility with other EEPROM classes)
+    uint8_t* getDataPtr() noexcept { return nullptr; }
 
     // Write a string to EEPROM, same as writeString(int, const char*)
-    int writeString(int index, const String &value) 
+    int writeString(int index, const String &value) noexcept 
     {
         return writeString(index, value.c_str());
     }
 
-    // Write a string to EEPROM, up to the null terminator, or until max_size
-    int writeString(int index, const char *value) 
-    {
-        int len = strlen(value);
-        if (index + len + 1 > max_size) {
-            // truncate the string if it doesn't fit
-            len = max_size - index - 1;
-            // Won't fit anyway
-            if (len <= 0) 
-                return 0;
-        }
+    // Write a string to EEPROM, up to the null terminator, or until max size is reached
+    int writeString(int index, const char *value) noexcept;
 
-        for (int i = 0; i < len; i++) {
-            update(index + i, value[i]);
-        }
-        update(index + len, '\0');
-        return len;
-    }
-
-    // Read a string from EEPROM at given index
-    String readString(int index)
-    {
-        int len = 0, i = index;
-        for (; i < max_size; i++, len++)
-            if (read(i) == '\0') // Get the length of the string
-                break;
-
-        // If the terminator is not found or the string is empty
-        if (len == 0 || read(i) != '\0') 
-            return String();
-
-        // Read the string
-        char buf[len + 1];
-        for (i = 0; i < len; i++)
-            buf[i] = read(index + i);
-        buf[len] = '\0';
-        return String(buf);
-    }
+    // Read a string from EEPROM at given index, may return empty string if no
+    // string is found or the string is empty
+    String readString(int index) noexcept;
 };
 
-static EEPROMArduinoClass EEPROM_CLASS = EEPROMArduinoClass();
+extern EEPROMArduinoClass EEPROM_CLASS;
 #endif
 
+// EPS32 and ESP8266 EEPROM class
 #if defined(ESP8266) || defined(ESP32)
 
 #define NO_GLOBAL_EEPROM
@@ -106,5 +74,8 @@ public:
 };
 
 
-static auto EEPROM_CLASS = EEPROMESPClass();
+// auto EEPROM_CLASS = EEPROMESPClass(); // For ESP32
+extern EEPROMESPClass EEPROM_CLASS;
 #endif
+
+// END_DETAIL_TEEPROM_NAMESPACE

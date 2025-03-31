@@ -1,6 +1,7 @@
 #pragma once
 
 #include <Arduino.h>
+#include "namespaces.hpp"
 
 // Source: 
 // https://arduino.stackexchange.com/questions/21137/arduino-how-to-get-the-board-type-in-code
