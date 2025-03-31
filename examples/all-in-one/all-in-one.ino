@@ -1,33 +1,22 @@
 // Include the library
 #include <Teeprom.h>
 
+// This will be used as a start address for writing
+// the data to EEPROM.
+#define WRITE_ADDRESS 10
+
 struct SomeData {
     // These must be standard types.
     int number;
     float pi;
     char string[20];
 
-    // Can't put here, because the `String` can't be converted to
-    // (uint8_t*) array, to be written to EEPROM.
+    // Can't put here, because the `String` can't be 
+    // read properly as a (uint8_t*) array
     // String str;
 };
 
-typedef struct {
-    // String ssid;
-    // String pass;
-    char ssid[20];
-    char pass[20];
-} NetworkData;
-
-typedef struct {
-    char name[20];
-    // String name;
-    uint8_t index;
-} LocationData;
-
-// typedef Teeprom<512, EF<uint8_t>, EFs<NetworkData, 5>, EF<uint8_t>, EFs<LocationData, 2>> memory_layout_t;
-
-// Typedef this for convenience
+// Typedef for convenience
 typedef Teeprom<128, EF<int>, EFs<char, 20>, EStr, EFArr<int, 2, 3>, EF<SomeData>> Teeprom128;
 
 void setup()
@@ -38,9 +27,9 @@ void setup()
     // You may need to change the baud rate to match your device
     // For Arduino boards, the default baud rate is 9600
     // For ESP32, the default baud rate is 115200
-    Serial.begin(115200);
+    Serial.begin(9600);
 
-    // Create a reader object with 128 bytes of EEPROM memory.
+    // Create a teeprom object with 128 bytes of EEPROM memory.
     // Starting from address 0 up to 127.
     // With elements:
     // 1. int
@@ -55,9 +44,6 @@ void setup()
     // And that's all there is to it!
     Teeprom128 writer;
 
-    Serial.print("\nTotal bytesize of elements: ");
-    Serial.println(writer.bytesize());
-
     // Set the integer value
     writer.get<0>() = 123;
 
@@ -68,7 +54,7 @@ void setup()
 
     // This is important, you can't use `get` here, 
     // if you want to modify the whole string
-    writer.get_data<2>() = "Mystirng"; 
+    writer.get_data<2>() = "Hi"; 
     
     // Set the matrix
     for(int i = 0; i < 2; i++){
@@ -85,9 +71,21 @@ void setup()
     data.pi = 3.141592;
 
     Serial.println("Writing data to EEPROM...");
+    Serial.print("Reserved EEPROM size: ");
+    Serial.println(writer.eeprom_size()); // this will print 128
+    Serial.print("Total bytesize of elements: ");
+    Serial.println(writer.bytesize()); // this is the total size of all elements that will be written to EEPROM
 
-    // Commit the changes to EEPROM, starting from address 10
-    if (writer.save(10)){
+    // Check if all elements will fit into EEPROM
+    if (writer.valid(WRITE_ADDRESS)) {
+        Serial.println("All elements will fit into EEPROM!");
+    }
+    else {
+        Serial.println("Not all elements will fit into EEPROM!");
+    }
+
+    // Commit the changes to EEPROM, starting from address WRITE_ADDRESS
+    if (writer.save(WRITE_ADDRESS)){
         Serial.println("Data written to EEPROM!");
     } else {
         Serial.println("Failed to write data to EEPROM!");
@@ -97,14 +95,16 @@ void setup()
     delay(500);
 }
 
-void loop(){
-    // Load the data from EEPROM, the types must match the ones used in `setup`
-    // In case of ESP32 Alocates 128 + sizeof(reader) bytes of memory
-    // On Arduino boards uses only sizeof(reader) bytes of memory, since the EEPROM data isn't copied to an array.
+void loop()
+{
+    // Load the data from EEPROM
+    // In case of ESP32 Alocates additional buffer of size `teeprom.size()`
+    // On Arduino boards uses only sizeof(teeprom) bytes of memory, since the EEPROM data isn't copied to an array.
     Teeprom128 reader;
 
-    // Load the data from EEPROM, starting from address 10
-    if (reader.load(10)){
+    // Load the data from EEPROM, starting from address WRITE_ADDRESS
+    if (reader.load(WRITE_ADDRESS))
+    {
         // Print the data
         Serial.println(reader.get<0>());
         Serial.println(reader.get_data<1>());
@@ -127,19 +127,28 @@ void loop(){
         Serial.println(data.pi, 6);
 
         // Print the whole buffer
-        Serial.println("Buffer:");
-        auto buffer = reader.data();
-        auto end = 10 + reader.bytesize();
-        for (int i = 10; i < end; i++) {
-            if (isalpha(buffer[i])) {
-                Serial.print((char)buffer[i]);
-            } else {
-                Serial.print(buffer[i]);
+        if (reader.data() == nullptr)
+        {
+            Serial.print("Buffer is not allocated\n");
+        }
+        else
+        {
+            Serial.println("Buffer:");
+
+            auto buffer = reader.data();
+            auto end = WRITE_ADDRESS + reader.bytesize();
+
+            for (int i = WRITE_ADDRESS; i < end; i++) {
+                if (isalpha(buffer[i])) 
+                    Serial.print((char)buffer[i]);
+                else 
+                    Serial.print(buffer[i]);
+
+                if ((i - 10) % 16 == 15) 
+                    Serial.println();
+                else
+                    Serial.print(" ");
             }
-            if ((i - 10) % 16 == 15) 
-                Serial.println();
-            else
-                Serial.print(" ");
         }
 
     } else {

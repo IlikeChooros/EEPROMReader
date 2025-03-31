@@ -6,10 +6,8 @@
 // Source:
 // https://stackoverflow.com/questions/4041447/how-is-stdtuple-implemented
 
-#include <cstddef>
 
 #include "namespaces.hpp"
-
 
 BEGIN_DETAIL_TEEPROM_NAMESPACE
 

@@ -1,11 +1,12 @@
 #pragma once
 
 // TODO: Add support for Arduino boards with this
-#include <type_traits>
+// #include <type_traits>
 
 #include "settings.hpp"
 #include "eeprom.hpp"
 #include "tuple.hpp"
+#include "type_utils.hpp"
 
 BEGIN_DETAIL_TEEPROM_NAMESPACE
 
@@ -69,7 +70,8 @@ template <typename Field>
 inline size_t getFieldSize(Field& field) noexcept 
 {
     static_assert(
-        std::is_base_of<BaseEEPROMField, Field>::value,
+        // std::is_base_of<BaseEEPROMField, Field>::value,
+        isBaseOf<BaseEEPROMField, remove_reference_t<Field>>(),
         "getFieldSize: Field must be of type EEPROMField, EEPROMString, or EEPROMFields"
     );
     return sizeof(field.data);
@@ -177,25 +179,6 @@ inline bool readTupleFromEEPROM(Tuple& tuple, size_t& address = 0) noexcept
     return true;
 }
 
-// template <typename Type, typename CmpType>
-// constexpr bool isSameType() { return std::is_same<Type, CmpType>::value; }
-
-// Remove reference from a type
-template <typename T>
-struct remove_reference { typedef T type; };
-
-template <typename T>
-struct remove_reference<T&> { typedef T type; };
-
-template <typename T>
-using remove_reference_t = typename remove_reference<T>::type;
-
-
-// Check if the type is a base of another type
-template <typename Base, typename Derived>
-constexpr bool isBaseOf() { 
-    return std::is_base_of<Base, remove_reference_t<Derived>>::value; 
-}
 
 // Verify all tuple fields
 template <typename Tuple, size_t Index = 0>
@@ -306,6 +289,10 @@ public:
 
     Teeprom(const Teeprom&) = delete;
     Teeprom& operator=(const Teeprom&) = delete;
+    ~Teeprom()
+    {
+        EEPROM_CLASS.end(); // End the EEPROM memory
+    }
 
 
     /**

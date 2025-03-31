@@ -1,8 +1,5 @@
 #include "eeprom.hpp"
 
-
-BEGIN_DETAIL_TEEPROM_NAMESPACE
-
 #if defined(ARDUINO_EEPROM)
 
 int EEPROMArduinoClass::writeString(int index, const char *value) noexcept
@@ -43,11 +40,7 @@ String EEPROMArduinoClass::readString(int index) noexcept
 }
 
 EEPROMArduinoClass EEPROM_CLASS = EEPROMArduinoClass();
-
 #endif
-
-END_DETAIL_TEEPROM_NAMESPACE
-
 
 #if defined(ESP8266) || defined(ESP32)
 EEPROMESPClass EEPROM_CLASS = EEPROMESPClass();
